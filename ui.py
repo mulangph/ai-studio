@@ -18,7 +18,7 @@ def create(prompt, style):
     return image, enhanced
 
 
-
+#Build the UI using gradio
 def build_ui():
 
     with gr.Blocks() as demo:

@@ -15,21 +15,22 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 
 # Important for RTX 3050 4GB
+# For memory optimization
 pipe.enable_attention_slicing()
 pipe.enable_model_cpu_offload()
 
 
 print("Model loaded!")
 
-
+#Main function to generate image
 def generate_image(prompt):
 
     result = pipe(
         prompt,
         height=512,
         width=512,
-        num_inference_steps=25,
-        guidance_scale=7.5
+        num_inference_steps=25, #Quality slider, sweet spot between 20-35, low=blur, higher=longer time to generate
+        guidance_scale=7.5  #Creativity vs Strictiness Toggle sweet spot 5.0 - 8.0, low value =AI choice, High=AI follows hard every single word
     )
 
     return result.images[0]

@@ -1,36 +1,54 @@
-import torch
-from diffusers import StableDiffusionPipeline
+"""Local Stable Diffusion backend.
+
+The pipeline loads the first time you generate with it, not at startup,
+so the app opens instantly and OpenAI-only users never need a GPU.
+"""
+
+from functools import lru_cache
+
+from registry import MODELS
 
 
-MODEL_ID = "runwayml/stable-diffusion-v1-5"
+@lru_cache(maxsize=1)
+def _load_pipeline():
+    import torch
+    from diffusers import StableDiffusionPipeline
+
+    model_id = MODELS["sd-1.5"].model_id
+    print(f"Loading {model_id}...")
+
+    if torch.cuda.is_available():
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        # Keeps SD 1.5 inside 4 GB of VRAM (e.g. RTX 3050)
+        pipe.enable_attention_slicing()
+        pipe.enable_model_cpu_offload()
+        device = "cuda"
+    else:
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float32)
+        pipe.to("cpu")
+        device = "cpu"
+
+    print(f"Model loaded on {device}.")
+    return pipe, device
 
 
-print("Loading model...")
+def generate_local(prompt, negative_prompt, width, height, count, steps, guidance, seed):
+    import torch
 
+    pipe, device = _load_pipeline()
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    MODEL_ID,
-    torch_dtype=torch.float16
-)
-
-
-# Important for RTX 3050 4GB
-# For memory optimization
-pipe.enable_attention_slicing()
-pipe.enable_model_cpu_offload()
-
-
-print("Model loaded!")
-
-#Main function to generate image
-def generate_image(prompt):
+    generator = None
+    if seed is not None and seed >= 0:
+        generator = torch.Generator(device="cpu").manual_seed(int(seed))
 
     result = pipe(
         prompt,
-        height=512,
-        width=512,
-        num_inference_steps=25, #Quality slider, sweet spot between 20-35, low=blur, higher=longer time to generate
-        guidance_scale=7.5  #Creativity vs Strictiness Toggle sweet spot 5.0 - 8.0, low value =AI choice, High=AI follows hard every single word
+        negative_prompt=negative_prompt or None,
+        width=width,
+        height=height,
+        num_images_per_prompt=int(count),
+        num_inference_steps=int(steps),   # 20-35 is the sweet spot
+        guidance_scale=float(guidance),   # 5-8: higher follows the prompt more literally
+        generator=generator,
     )
-
-    return result.images[0]
+    return result.images
